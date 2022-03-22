@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.eShopWeb.ApplicationCore.Entities;
 using Microsoft.eShopWeb.ApplicationCore.Interfaces;
 using Microsoft.eShopWeb.ApplicationCore.Specifications;
+using Microsoft.Extensions.Logging;
 using MinimalApi.Endpoint;
 
 namespace Microsoft.eShopWeb.PublicApi.CatalogItemEndpoints;
@@ -20,6 +21,7 @@ public class CatalogItemListPagedEndpoint : IEndpoint<IResult, ListPagedCatalogI
     private IRepository<CatalogItem> _itemRepository;
     private readonly IUriComposer _uriComposer;
     private readonly IMapper _mapper;
+    //private readonly ILogger _logger;
 
     public CatalogItemListPagedEndpoint(IUriComposer uriComposer, IMapper mapper)
     {
@@ -45,6 +47,7 @@ public class CatalogItemListPagedEndpoint : IEndpoint<IResult, ListPagedCatalogI
 
         var filterSpec = new CatalogFilterSpecification(request.CatalogBrandId, request.CatalogTypeId);
         int totalItems = await _itemRepository.CountAsync(filterSpec);
+        //_logger.LogWarning($"An example of a Warning trace. Get TotalItems = {totalItems}");
 
         var pagedSpec = new CatalogFilterPaginatedSpecification(
             skip: request.PageIndex.Value * request.PageSize.Value,
@@ -68,6 +71,8 @@ public class CatalogItemListPagedEndpoint : IEndpoint<IResult, ListPagedCatalogI
         {
             response.PageCount = totalItems > 0 ? 1 : 0;
         }
+
+        throw new Exception("Cannot move further");
 
         return Results.Ok(response);
     }

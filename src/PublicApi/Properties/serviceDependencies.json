@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "appInsights1": {
+      "type": "appInsights"
+    },
+    "apis1": {
+      "type": "apis"
+    }
+  }
+}
