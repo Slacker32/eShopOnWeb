@@ -55,6 +55,11 @@ public class CheckoutModel : PageModel
             await _basketService.SetQuantities(BasketModel.Id, updateModel);
             await _orderService.CreateOrderAsync(BasketModel.Id, new Address("123 Main St.", "Kent", "OH", "United States", "44240"));
             await _basketService.DeleteBasketAsync(BasketModel.Id);
+
+            var functionUrl = "https://orderitemsreserver20220405151854.azurewebsites.net/api/ReservationOfOrderItems?";
+            var functionClient = new HttpClient();
+            var responce = await functionClient.PostAsJsonAsync(functionUrl, updateModel);
+            var ret = await responce.Content.ReadAsStringAsync();
         }
         catch (EmptyBasketOnCheckoutException emptyBasketOnCheckoutException)
         {
