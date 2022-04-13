@@ -7,6 +7,7 @@ using Microsoft.eShopWeb.ApplicationCore.Exceptions;
 using Microsoft.eShopWeb.ApplicationCore.Interfaces;
 using Microsoft.eShopWeb.Infrastructure.Identity;
 using Microsoft.eShopWeb.Web.Interfaces;
+using OrderItemsDeliveryService;
 
 namespace Microsoft.eShopWeb.Web.Pages.Basket;
 
@@ -40,7 +41,7 @@ public class CheckoutModel : PageModel
         await SetBasketModelAsync();
     }
 
-    public async Task<IActionResult> OnPost(IEnumerable<BasketItemViewModel> items)
+    public async Task<IActionResult> OnPost(IEnumerable<BasketItemViewModel> items, string shippingAddress)
     {
         try
         {
@@ -55,6 +56,18 @@ public class CheckoutModel : PageModel
             await _basketService.SetQuantities(BasketModel.Id, updateModel);
             await _orderService.CreateOrderAsync(BasketModel.Id, new Address("123 Main St.", "Kent", "OH", "United States", "44240"));
             await _basketService.DeleteBasketAsync(BasketModel.Id);
+
+            var functionUrl = "https://orderitemsdeliveryservice20220413110715.azurewebsites.net/api/OrderItemsDeliveryServiceRun?";
+            var functionClient = new HttpClient();
+            var responce = await functionClient.PostAsJsonAsync(functionUrl, 
+                new OrderDeliveryModel
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    ShippingAddress = shippingAddress,
+                    ListOfItems = updateModel,
+                    FinalPrice = BasketModel.Total()
+                });
+            var ret = await responce.Content.ReadAsStringAsync();
         }
         catch (EmptyBasketOnCheckoutException emptyBasketOnCheckoutException)
         {

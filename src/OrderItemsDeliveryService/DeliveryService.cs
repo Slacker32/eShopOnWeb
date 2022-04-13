@@ -1,0 +1,78 @@
+﻿using System;
+using System.IO;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Azure.WebJobs;
+using Microsoft.Azure.WebJobs.Extensions.Http;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
+using System.Net.Http;
+using Microsoft.Azure.Cosmos;
+
+namespace OrderItemsDeliveryService
+{
+    public static class DeliveryService
+    {
+        [FunctionName("OrderItemsDeliveryServiceRun")]
+        public static async Task<IActionResult> Run(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)] HttpRequestMessage req,
+            ILogger log)
+        {
+            log.LogInformation("C# HTTP trigger function processed a request.");
+
+            var content = await req.Content.ReadAsStringAsync();
+            try
+            {
+                await SaveToCosmosDb(content);
+            }
+            catch (Exception ex)
+            {
+                return new UnprocessableEntityObjectResult(ex.Message);
+            }
+
+            return new OkObjectResult("This HTTP triggered function executed successfully.");
+        }
+
+        private static async Task SaveToCosmosDb(string contentToSave)
+        {
+            var _endpointUri = Environment.GetEnvironmentVariable("CosmosDbUri");
+            var _primaryKey = Environment.GetEnvironmentVariable("CosmosDbPrimaryKey");
+
+            using(var cosmosDbClient = new CosmosClient(_endpointUri, _primaryKey))
+            {
+                var dbResponse = await cosmosDbClient.CreateDatabaseIfNotExistsAsync("DeliveryService");
+                var targetDb = dbResponse.Database;
+                var indexingPolicy = new IndexingPolicy
+                {
+                    IndexingMode = IndexingMode.Consistent,
+                    Automatic = true,
+                    IncludedPaths =
+                    {
+                        new IncludedPath
+                        {
+                            Path = "/*"
+                        }
+                    }
+                };
+                var containerProperties = new ContainerProperties("Orders", "/ShippingAddress")
+                {
+                    IndexingPolicy = indexingPolicy,
+                };
+                var containerResponse = await targetDb.CreateContainerIfNotExistsAsync(containerProperties);
+                var container = containerResponse.Container;
+
+                var item = JsonConvert.DeserializeObject<OrderDeliveryModel>(contentToSave);
+                await container.CreateItemAsync(item);
+
+                //var saveResponse = await container.CreateItemStreamAsync(contentToSave, new PartitionKey(item.ShippingAddress));
+                //if (!saveResponse.IsSuccessStatusCode)
+                //{
+                //    throw new Exception(saveResponse.ErrorMessage);
+                //}
+            }
+
+        }
+
+    }
+}

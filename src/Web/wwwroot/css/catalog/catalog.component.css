@@ -1,4 +1,8 @@
-﻿.esh-catalog-hero {
+﻿.input-deliveryAddress {
+    width: 100%;
+}
+
+.esh-catalog-hero {
   background-image: url("../../images/main_banner.png");
   background-size: cover;
   height: 260px;
