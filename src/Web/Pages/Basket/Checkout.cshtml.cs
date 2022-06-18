@@ -1,12 +1,17 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using System.Diagnostics;
+using System.Text;
+using DeliveryOrderProcessor;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Azure.ServiceBus;
 using Microsoft.eShopWeb.ApplicationCore.Entities.OrderAggregate;
 using Microsoft.eShopWeb.ApplicationCore.Exceptions;
 using Microsoft.eShopWeb.ApplicationCore.Interfaces;
 using Microsoft.eShopWeb.Infrastructure.Identity;
 using Microsoft.eShopWeb.Web.Interfaces;
+using Newtonsoft.Json;
 
 namespace Microsoft.eShopWeb.Web.Pages.Basket;
 
@@ -40,7 +45,7 @@ public class CheckoutModel : PageModel
         await SetBasketModelAsync();
     }
 
-    public async Task<IActionResult> OnPost(IEnumerable<BasketItemViewModel> items)
+    public async Task<IActionResult> OnPost(IEnumerable<BasketItemViewModel> items, string shippingAddress)
     {
         try
         {
@@ -55,6 +60,11 @@ public class CheckoutModel : PageModel
             await _basketService.SetQuantities(BasketModel.Id, updateModel);
             await _orderService.CreateOrderAsync(BasketModel.Id, new Address("123 Main St.", "Kent", "OH", "United States", "44240"));
             await _basketService.DeleteBasketAsync(BasketModel.Id);
+
+            await SendDataIntoDeliveryOrderProcessor(shippingAddress, updateModel);
+
+            await SendDataIntoServiceBus(updateModel);
+
         }
         catch (EmptyBasketOnCheckoutException emptyBasketOnCheckoutException)
         {
@@ -64,6 +74,52 @@ public class CheckoutModel : PageModel
         }
 
         return RedirectToPage("Success");
+    }
+
+    private async Task SendDataIntoDeliveryOrderProcessor(string shippingAddress, Dictionary<string,int> updateModel)
+    {
+        var deliveryOrderProcessorUri = Environment.GetEnvironmentVariable("DeliveryOrderProcessorUri");
+        var functionUrl = deliveryOrderProcessorUri + "/api/OrderItemsDeliveryServiceRun?";
+        var functionClient = new HttpClient();
+        var responce = await functionClient.PostAsJsonAsync(functionUrl,
+            new OrderDeliveryModel
+            {
+                Id = Guid.NewGuid().ToString(),
+                ShippingAddress = shippingAddress,
+                ListOfItems = updateModel,
+                FinalPrice = BasketModel.Total()
+            });
+        await responce.Content.ReadAsStringAsync();
+    }
+
+    private async Task SendDataIntoServiceBus(Dictionary<string, int> updateModel)
+    {
+        var msg = JsonConvert.SerializeObject(updateModel);
+        await ServiceBusOrderSender(msg);
+
+        var orderItemsReserverUri = Environment.GetEnvironmentVariable("OrderItemsReserverUri");
+        var functionUrl = orderItemsReserverUri + "/api/ReservationOfOrderItems?";
+        var functionClient = new HttpClient();
+        var responce = await functionClient.PostAsJsonAsync(functionUrl, updateModel);
+        await responce.Content.ReadAsStringAsync();
+    }
+
+    private async Task ServiceBusOrderSender(string msg)
+    {
+        var serviceBusConnectionString = Environment.GetEnvironmentVariable("ServiceBusConnectionString");
+        var queueName = Environment.GetEnvironmentVariable("ServiceBusQueueName");
+        var queueClient = new QueueClient(serviceBusConnectionString, queueName);
+
+        try
+        {
+            var message = new Message(Encoding.UTF8.GetBytes(msg));
+            await queueClient.SendAsync(message);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(ex.Message);
+        }
+        await queueClient.CloseAsync();
     }
 
     private async Task SetBasketModelAsync()
